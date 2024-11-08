@@ -1,0 +1,116 @@
+//stage 1 - check out the code from git 
+//stage 2 - Build Docker Image from docker file 9 i have the docker file inside my git repo )
+//stage 3 - Remove existing container if it is running 
+//stage 4 - Run the new container from build image 
+//stage 5 - Update the welcome page again from git to the container 
+//stage 6 - Now Make container as image and tag it as latest (if any old image with tag latest delete it  ) 
+//stage 7 - Check if any latest tag in docker hub , if find any latest tag in docker hub make that as sub version with 0.1 + sequence 
+//stage 8 - Push current latest build from jenkins to docker hub 
+
+
+
+
+
+
+pipeline {
+    agent any
+
+    environment {
+        DOCKER_IMAGE = 'project03'
+        DOCKER_HUB_REPO = 'harishgorla5/project03'
+        WELCOME_PAGE_PATH = './index.html' // Path to your index.html in the repo
+        CONTAINER_PATH = '/usr/share/nginx/html/index.html' // Nginx document root
+    }
+
+    stages {
+        stage('Checkout Code') {
+            steps {
+                // Specify the branch to checkout
+                script {
+                    git branch: 'main', url: 'https://github.com/harishgorla5/project03.git'
+                }
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    sh 'docker build -t ${DOCKER_IMAGE}:latest .'
+                }
+            }
+        }
+
+        stage('Remove Existing Container') {
+            steps {
+                script {
+                    try {
+                        sh "docker rm -f ${DOCKER_IMAGE}"
+                    } catch (Exception e) {
+                        echo 'No existing container to remove.'
+                    }
+                }
+            }
+        }
+
+        stage('Run New Container') {
+            steps {
+                script {
+                    sh "docker run -d --name ${DOCKER_IMAGE} -p 80:80 ${DOCKER_IMAGE}:latest"
+                }
+            }
+        }
+
+        stage('Update Welcome Page') {
+            steps {
+                script {
+                    // Copy the updated index.html into the running container
+                    sh "docker cp ${WELCOME_PAGE_PATH} ${DOCKER_IMAGE}:${CONTAINER_PATH}"
+                }
+            }
+        }
+
+        stage('Tag Image as Latest') {
+            steps {
+                script {
+                    // Remove old 'latest' image if it exists
+                    sh "docker rmi -f ${DOCKER_HUB_REPO}:latest || true"
+                    // Tag the current image as latest
+                    sh "docker tag ${DOCKER_IMAGE}:latest ${DOCKER_HUB_REPO}:latest"
+                }
+            }
+        }
+
+        stage('Check for Latest Tag in Docker Hub') {
+            steps {
+                script {
+                    def tags = sh(script: "curl -s https://registry.hub.docker.com/v2/repositories/${DOCKER_HUB_REPO}/tags/", returnStdout: true)
+                    def latestTagExists = tags.contains('\"name\": \"latest\"')
+                    
+                    if (latestTagExists) {
+                        // Fetch the latest version and increment
+                        def latestVersion = sh(script: "echo ${tags} | jq -r '.results | .[] | select(.name | startswith(\"0.1\")) | .name' | sort -V | tail -n 1", returnStdout: true).trim()
+                        def newVersion = latestVersion.replaceFirst(/0.1\.(\\d+)/, { match, seq -> "0.1.${seq.toInteger() + 1}" })
+                        currentBuild.description = "New Version: ${newVersion}"
+                    } else {
+                        echo 'No latest tag found, using 0.1.0'
+                        currentBuild.description = "New Version: 0.1.0"
+                    }
+                }
+            }
+        }
+
+        stage('Push to Docker Hub') {
+            steps {
+                script {
+                    sh "docker push ${DOCKER_HUB_REPO}:latest"
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            cleanWs()
+        }
+    }
+}

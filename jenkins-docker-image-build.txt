@@ -1,0 +1,50 @@
+pipeline {
+    agent any
+
+    environment {
+        // Define your Docker repository if you want to push the image, e.g., Docker Hub or ECR
+        DOCKER_HUB_REPO = 'your_dockerhub_repo'  // Optional: replace with your Docker Hub repo name
+        DOCKER_CREDENTIALS_ID = 'docker-hub-credentials' // The ID of your Docker credentials in Jenkins
+    }
+
+    stages {
+        stage('Clone Repository') {
+            steps {
+                // Clone the Git repository containing the Dockerfile
+                git branch: 'main', url: 'https://github.com/your-repo-url.git'
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    // Build the Docker image using the Dockerfile from the repository
+                    docker.build("my-app-image:latest", ".")
+                }
+            }
+        }
+
+        stage('Push Docker Image') {
+            when {
+                expression { env.DOCKER_HUB_REPO != null } // Only if Docker repo is defined
+            }
+            steps {
+                script {
+                    // Log in to Docker Hub and push the built image
+                    docker.withRegistry('', DOCKER_CREDENTIALS_ID) {
+                        docker.image("my-app-image:latest").push()
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo 'Docker image built (and pushed, if configured) successfully!'
+        }
+        failure {
+            echo 'Pipeline failed.'
+        }
+    }
+}

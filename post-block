@@ -1,0 +1,18 @@
+def COLOR_MAP = [
+    'FAILURE' : 'Red'
+    'SUCCESS' : 'Green'
+    ]
+
+
+post {
+    always {
+        echo 'slack notification'
+        slacksend(
+            channel: '#channel name',
+            color: COLOR_MAP[currentBuild.currentResult],
+            message: "*${currentBuild.currentResult}:* Job ${env.Job_Name} \n build ${env.BUILD_NUMBER} \n More info at: ${env.BUILD_URL}"
+        )
+    }
+}
+
+#https://www.youtube.com/watch?v=9ZUy3oHNgh8
